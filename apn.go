@@ -5,7 +5,7 @@
 /*
 
 apn is a Go Apple Push Notification package. Heavily uses queues and goroutines. 
-It has a few tests and seems to work properly but it hasn't had thourough testing and hasn't gone into production yet. 
+It has a few tests and **seems** to work properly but it hasn't had thourough testing and hasn't gone into production yet. 
 
 NB: This is my first Go code ever.
 
@@ -20,8 +20,12 @@ Usage
         import "github.com/nicolaspaton/goapn"
 
         // You can create multiple queues for different environments and apps
-        q := apn.NewQueue(apn.Sandbox, "cert.pem", "key.pem")
-
+        q, err := apn.NewQueue(apn.Sandbox, "cert.pem", "key.pem")
+        
+        if err != nil {
+            log.Fatalln("Error loading queue", err)
+        }
+        
         // The payload is a nested string to interface{} map that respects Apple doc [1]. You should too.
         payload := make(map[string]interface{})
         payload["aps"] = map[string]interface{}{
@@ -41,7 +45,7 @@ Usage
         // It will eventually also return, in the same way, the feedback service errors soon [3]
         go func(q *apn.Queue) {
             for {
-                notification <- q.Error
+                notification := <- q.Error
                 if notification.Error != nil {
                     // Do something with that notification
                 }
@@ -53,7 +57,7 @@ Certificates
 
 You need a certification and an unprotected key pem file. See http://blog.boxedice.com/2010/06/05/how-to-renew-your-apple-push-notification-push-ssl-certificate/
 
-Reminder, after you've 
+Reminder, after you've got you .p12 files
 
         openssl pkcs12 -clcerts -nokeys -out dev-cert.pem -in dev-cert.p12
         openssl pkcs12 -nocerts -out dev-key.pem -in dev-key.p12

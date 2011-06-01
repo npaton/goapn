@@ -12,8 +12,14 @@ Usage
     
         import "github.com/nicolaspaton/goapn"
         
+        // ...
+        
         // You can create multiple queues for different environments and apps
-        q := apn.NewQueue(apn.Sandbox, "cert.pem", "key.pem")
+        q, err := apn.NewQueue(apn.Sandbox, "cert.pem", "key.pem")
+        
+        if err != nil {
+            log.Fatalln("Error loading queue", err)
+        }
 
         // The payload is a nested string to interface{} map that respects Apple doc [1]. You should too.
         payload := make(map[string]interface{})
@@ -29,13 +35,13 @@ Usage
         q.Send <- apn.NewNotification("3f6e...device token here", payload)
 
         // Start a loop in a goroutine somewhere to handle errors
-        // The erronerous notification is returned with an non null Error (os.Error) attribute
+        // The erroneous notification is returned with an non null Error (os.Error) attribute
         // This interface handles internal validation errors and errors sent back by apple [2]
         // It will eventually also return, in the same way, the feedback service errors soon [3]
         go func(q *apn.Queue) {
             for {
-                notification <- q.Error
-                if notification.Error != nil {
+                notification := <- q.Error
+                if notification.Error != nil { // Error should always be there at this point...
                     // Do something with that notification
                 }
             }

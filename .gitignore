@@ -1,6 +1,7 @@
 // misc
 .DS_Store
 .svn
+*.private
 
 
 // private certificates...
