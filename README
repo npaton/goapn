@@ -1,14 +1,7 @@
-// Copyright 2011 Nicolas Paton. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-/*
-
 apn is a Go Apple Push Notification package. Heavily uses queues and goroutines. 
-It has a few tests and seems to work properly but it hasn't had thourough testing and hasn't gone into production yet. 
+It has a few tests and seems to work properly but it hasn't had thorough testing and hasn't gone into production yet. 
 
 NB: This is my first Go code ever.
-
 
 Installation
 
@@ -18,7 +11,7 @@ Installation
 Usage
     
         import "github.com/nicolaspaton/goapn"
-
+        
         // You can create multiple queues for different environments and apps
         q := apn.NewQueue(apn.Sandbox, "cert.pem", "key.pem")
 
@@ -75,54 +68,9 @@ Apple and Apple Push Notifications are trademarks owned by Apple inc. and have n
 
 [3] http://developer.apple.com/library/ios/#documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/CommunicatingWIthAPS/CommunicatingWIthAPS.html%23//apple_ref/doc/uid/TP40008194-CH101-SW4
 
-*/
-package apn
-
-import (
-// "os"
-// "log"
-// "time"
-// "os/signal"
-
-// "fmt"
-// "sync"
-// "path"
-// "crypto/tls"
-// "net"
-// "bytes"
-)
 
 
-type ApnEnv int
-
-var (
-	Test       = ApnEnv(0)
-	Sandbox    = ApnEnv(1)
-	Production = ApnEnv(2)
-)
-
-func envString(env ApnEnv) (envString string) {
-	if env == Test {
-		envString = "test"
-	} else if env == Sandbox {
-		envString = "sandbox"
-	} else if env == Production {
-		envString = "production"
-	}
-	return envString
-}
-
-func envObject(envString string) (env ApnEnv) {
-	if envString == "sandbox" {
-		env = Sandbox
-	} else if envString == "production" {
-		env = Production
-	}
-	return
-}
-
-
-var queues []Queue = make([]Queue, 10)
-
-
+// Copyright 2011 Nicolas Paton. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
