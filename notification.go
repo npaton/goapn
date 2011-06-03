@@ -16,50 +16,68 @@ import (
 
 
 type Notification struct {
-	queue       *Queue // Parent queue
-	Payload     map[string]interface{}
-	DeviceToken string
-	identifier  uint32 // The identifier used to find on erronerous notifications
-	tries       int    // Number of times tried to be sent
-	Sent        bool   // True if sent, amazing
-	Invalid     bool
-	Error       os.Error
+	DeviceToken string                 // 64 byte device token string
+	Expiry      uint32                 // Expiry time in seconds since Unix epoch. (If set to 0, will set epiry to: now + 1 year)
+	Payload     map[string]interface{} // Payload should be formated to Apple specs, see Apple documentation and this pkg's sample code.
+
+	Sent  bool     // True if sent, amazing
+	Error os.Error // Error is only assigned when the notification is sent back on the Q Error chan.
+
+	queue      *Queue // Parent queue
+	identifier uint32 // The identifier used to find on erronerous notifications
+	tries      int    // Number of times tried to be sent
 }
 
 const NUMBER_OF_RETRIES = 2
 
-var PayloadTooLargeError = os.NewError("Payload size exceeds limit (255 bytes)")
-var BadDeviceToken = os.NewError("The given device token is not valid device token")
-var PayloadJSONEncodingError = os.NewError("Notification's payload cannot be encoded to JSON, it must not respect the format")
-var RefusedByApple = os.NewError("After several tries, the notification can't find it's way to Apple. (Can be a connection error!)")
+// You should expect to receive these errors on the notification sent back on the 'queue.Error' channel
+var (
+	PayloadTooLargeError     = os.NewError("Payload size exceeds limit (255 bytes)")
+	BadDeviceToken           = os.NewError("The given device token is not valid device token")
+	PayloadJSONEncodingError = os.NewError("Notification's payload cannot be encoded to JSON, it must not respect the json pkg input format")
+	RefusedByApple           = os.NewError("After several tries, the notification can't find it's way to Apple. (Can be a connection error!)")
+)
 
-func NewNotification(token string, payload map[string]interface{}) *Notification {
+// 64 byte device token string. payload should be formated to Apple specs, see documentation. Expiry time in seconds since Unix epoch (0 for 1 year).
+func NewNotification(token string, payload map[string]interface{}, expiry uint32) *Notification {
+
+	if expiry == 0 {
+		expiry = uint32(time.Seconds() + (60 * 60 * 24 * 360))
+	}
+
 	return &Notification{
 		Payload:     payload,
 		DeviceToken: token,
-		Invalid:     false,
+		Expiry:      expiry,
 	}
 }
 
-func (n *Notification) validateNotification() os.Error {
-    if len(n.DeviceToken) != 64 {
-        return BadDeviceToken
-    }
-    
-    pload, err := n.jsonPayload()
-    if err != nil {
-        return PayloadJSONEncodingError
-    }
-    
-    if len(pload) > 255 {
-        return PayloadTooLargeError
-    }
+func (n *Notification) validateNotification() (err os.Error) {
+	if len(n.DeviceToken) != 64 {
+		err = BadDeviceToken
+	}
 
-	return nil
+	pload, err := n.jsonPayload()
+	if err != nil {
+		err = PayloadJSONEncodingError
+	}
+
+	if len(pload) > 255 {
+		err = PayloadTooLargeError
+	}
+
+	_, err = hex.DecodeString(n.DeviceToken)
+	if err != nil {
+		err = BadDeviceToken
+	}
+
+	n.Error = err
+
+	return
 }
 
 func (n *Notification) shouldRetry() bool {
-	return n.tries < NUMBER_OF_RETRIES && !n.Invalid
+	return n.tries < NUMBER_OF_RETRIES && n.Error == nil
 }
 
 func (n *Notification) jsonPayload() (string, os.Error) {
@@ -68,38 +86,41 @@ func (n *Notification) jsonPayload() (string, os.Error) {
 }
 
 
-func (n *Notification) writeTo(writer io.Writer) os.Error {
-	// prepare binary payload from JSON structure
-	// payload := make(map[string]interface{})
-	// payload["aps"] = map[string]string{"alert": "Hello Push"}
+func (n *Notification) writeTo(writer io.Writer) (written int, err os.Error) {
 	payload, err := n.jsonPayload()
-	
+
+	// These error checks can be redundant with a previous validateNotification() call
 	if err != nil {
-		return PayloadJSONEncodingError
+		err = PayloadJSONEncodingError
+		return
 	}
 
 	if len(payload) > 255 {
-	    return PayloadTooLargeError
+		err = PayloadTooLargeError
+		return
 	}
 
-	// Decode hexadecimal push device token to binary byte array
-	token, _ := hex.DecodeString(n.DeviceToken)
+	deviceToken, err := hex.DecodeString(n.DeviceToken)
+	if err != nil {
+		err = BadDeviceToken
+		return
+	}
 
 	// Buffer in which to stuff the full payload
 	buffer := bytes.NewBuffer([]byte{})
 
-	// command
+	// Command, by spec, always send 1 for now, only one command available: "send".
 	binary.Write(buffer, binary.BigEndian, uint8(1))
 
-	// Identifier
+	// Identifier, used to find an erroneous notification when an error message is sent back from Apple 
 	binary.Write(buffer, binary.BigEndian, uint32(n.identifier))
 
-	// Expiry
-	binary.Write(buffer, binary.BigEndian, uint32(time.Seconds()+60*60))
+	// Expiry.
+	binary.Write(buffer, binary.BigEndian, uint32(n.Expiry))
 
-	// Device token
-	binary.Write(buffer, binary.BigEndian, uint16(len(token)))
-	binary.Write(buffer, binary.BigEndian, token)
+	// Device token. In hexadecimal format.
+	binary.Write(buffer, binary.BigEndian, uint16(len(deviceToken)))
+	binary.Write(buffer, binary.BigEndian, deviceToken)
 
 	// Actual payload
 	binary.Write(buffer, binary.BigEndian, uint16(len(payload)))
@@ -107,6 +128,6 @@ func (n *Notification) writeTo(writer io.Writer) os.Error {
 
 	// Write the bytes
 	payloadBytes := buffer.Bytes()
-	_, err = writer.Write(payloadBytes)
-	return err
+	written, err = writer.Write(payloadBytes)
+	return
 }

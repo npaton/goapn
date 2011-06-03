@@ -1,6 +1,6 @@
 include $(GOROOT)/src/Make.inc
 
-TARG=apn
+TARG=github.com/nicolaspaton/goapn
 GOFILES=\
 	apn.go\
 	notification.go\

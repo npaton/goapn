@@ -31,10 +31,10 @@ Usage
         payload["foo"] = "bar"
         payload["answer"] = 42
         
-        // Et hop, send!
-        q.Send <- apn.NewNotification("3f6e...device token here", payload)
+        // Et hop, send! (0 for expiry means 1 year)
+        q.Send <- apn.NewNotification("3f6e...device token here", payload, 0)
 
-        // Start a loop in a goroutine somewhere to handle errors
+        // Start a loop in a goroutine somewhere to handle errors (before you start sending)
         // The erroneous notification is returned with an non null Error (os.Error) attribute
         // This interface handles internal validation errors and errors sent back by apple [2]
         // It will eventually also return, in the same way, the feedback service errors soon [3]
@@ -52,7 +52,7 @@ Certificates
 
 You need a certification and an unprotected key pem file. See http://blog.boxedice.com/2010/06/05/how-to-renew-your-apple-push-notification-push-ssl-certificate/
 
-Reminder, after you've 
+Reminder, after you've got your .p12 files:
 
         openssl pkcs12 -clcerts -nokeys -out dev-cert.pem -in dev-cert.p12
         openssl pkcs12 -nocerts -out dev-key.pem -in dev-key.p12

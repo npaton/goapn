@@ -21,7 +21,7 @@ type service struct {
 	connection *tls.Conn
 	tlscert    tls.Certificate
 	connected  bool
-	recent     map[uint32]*Notification
+	recent     [magickMaxUniqueIdentifierCount]*Notification
 }
 
 func newService(queue *Queue, certificatePemFilePath, keyPemFilePath string) (*service, os.Error) {
@@ -31,7 +31,7 @@ func newService(queue *Queue, certificatePemFilePath, keyPemFilePath string) (*s
 		return nil, err
 	}
 
-	s := &service{tlscert: cert, queue: queue, recent: make(map[uint32]*Notification, 1000)}
+	s := &service{tlscert: cert, queue: queue}
 	s.serviceResponseCheckLoop()
 	return s, nil
 }
@@ -47,16 +47,16 @@ func (s *service) serviceResponseCheckLoop() {
 				time.Sleep(5 * 1E9) // We have time for the feedback loop, let's just wait
 			}
 
-            // Check service response for returned errors
-            var status uint8
-            var identifier uint32
-    	    if s.queue.Env != Test {
-			    status, identifier = checkServiceResponse(s.connection)
-		    } else {
-		        // For testing purposes
-		        status, identifier = checkServiceResponse(bytes.NewBuffer([]byte{}))
-		    }
-		    
+			// Check service response for returned errors
+			var status uint8
+			var identifier uint32
+			if s.queue.Env != Test {
+				status, identifier = checkServiceResponse(s.connection)
+			} else {
+				// For testing purposes
+				status, identifier = checkServiceResponse(bytes.NewBuffer([]byte{}))
+			}
+
 			s.handleServiceError(status, identifier)
 		}
 	}()
@@ -111,7 +111,7 @@ func (s *service) handleServiceError(status uint8, identifier uint32) {
 	}
 
 	notif.Error = os.NewError(fmt.Sprint("Apple Push Notification Service Error: ", statusMessage, "(", status, ")"))
-	notif.Invalid = true
+
 	s.queue.Error <- notif
 }
 
@@ -121,7 +121,7 @@ func (s *service) close() {
 	s.connected = false
 }
 
-func (s *service) DialIfNeeded() os.Error {
+func (s *service) dialIfNeeded() os.Error {
 	if !s.connected {
 		return s.dial()
 	}
@@ -130,11 +130,11 @@ func (s *service) DialIfNeeded() os.Error {
 
 
 func (s *service) dial() (err os.Error) {
-    if s.queue.Env == Test {
-        s.connected = true
-        return nil
-    }
-    log.Println("apn.dial start")
+	if s.queue.Env == Test {
+		s.connected = true
+		return nil
+	}
+	log.Println("apn.dial start")
 
 	if s.connection != nil {
 		s.close()
@@ -178,59 +178,49 @@ func (s *service) dial() (err os.Error) {
 func (s *service) writeNotification(notification *Notification) os.Error {
 
 	// Connect to s if needed
-	err := s.DialIfNeeded()
+	err := s.dialIfNeeded()
 	if err != nil {
 		return err
 	}
 
 	// Write notification to connection
 	if s.queue.Env != Test {
-        err = notification.writeTo(s.connection)
-    } else {
-        // For testing purposes
-        err = notification.writeTo(bytes.NewBuffer([]byte{}))
-    }
+		_, err = notification.writeTo(s.connection)
+	} else {
+		// For testing purposes
+		_, err = notification.writeTo(bytes.NewBuffer([]byte{}))
+		time.Sleep(2 * 1E6) // Why not sleep a little to fake some lengthy io write
+	}
 
 	// Possible errors:
 	//   - Invalid payload detected before send
 	//   - push notification isn't valid, was refused by Apple and we must not send it again
 	//   - the connection wen't down
 	// NB: The connection goes down when the notification is not valid...
-	// Also, event if it's the network, we must send back the unsent notifications back so the app can't handle the error
+	// Also, even if it's the network, we must send back the unsent notifications back so the app can handle the error
 
 	if err != nil {
-        if err == PayloadJSONEncodingError || err == PayloadTooLargeError {
-            notification.Error = err
-            notification.Invalid = true
-            return notification.Error
-        } else {
-    		if notification.tries < NUMBER_OF_RETRIES {
-                // Retry write in a couple minutes
-    			s.close()
-    			go func(n *Notification, serv *service) {
-        			time.Sleep(2 * 1E9)
-        			n.tries = n.tries + 1
-        			serv.writeNotification(n)
-    			}(notification, s)
-            } else {
-                notification.Error = RefusedByApple
-                notification.Invalid = true
-                return notification.Error
-            }
-    	}
+		if err == PayloadJSONEncodingError || err == PayloadTooLargeError || err == BadDeviceToken {
+			notification.Error = err
+			return notification.Error
+		} else {
+			if notification.shouldRetry() {
+				// Retry write in a couple minutes
+				s.close()
+				go func(n *Notification, serv *service) {
+					time.Sleep(2 * 1E9)
+					n.tries = n.tries + 1
+					serv.writeNotification(n)
+				}(notification, s)
+			} else {
+				notification.Error = RefusedByApple
+				return notification.Error
+			}
+		}
 
 	} else {
 		notification.Sent = true
-
 		s.recent[notification.identifier] = notification
-
-		// Wait for 5 seconds then remove notification from recent array
-		// We keep it arround if we need to find it from Apple's service 
-		// error response. Then it's useless
-		go func(n *Notification) {
-			time.Sleep(5 * 1E9)
-			s.recent[n.identifier] = nil
-		}(notification)
 	}
 	return nil
 }

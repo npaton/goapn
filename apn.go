@@ -16,16 +16,16 @@ Installation
 
 
 Usage
-    
+
         import "github.com/nicolaspaton/goapn"
 
         // You can create multiple queues for different environments and apps
         q, err := apn.NewQueue(apn.Sandbox, "cert.pem", "key.pem")
-        
+
         if err != nil {
             log.Fatalln("Error loading queue", err)
         }
-        
+
         // The payload is a nested string to interface{} map that respects Apple doc [1]. You should too.
         payload := make(map[string]interface{})
         payload["aps"] = map[string]interface{}{
@@ -35,29 +35,29 @@ Usage
         }
         payload["foo"] = "bar"
         payload["answer"] = 42
-        
-        // Et hop, send!
-        q.Send <- apn.NewNotification("3f6e...device token here", payload)
 
-        // Start a loop in a goroutine somewhere to handle errors
+        // Et hop, send! (0 for expiry means 1 year)
+        q.Send <- apn.NewNotification("3f6e...device token here", payload, 0)
+
+        // Start a loop in a goroutine somewhere to handle errors (before you start sending)
         // The erronerous notification is returned with an non null Error (os.Error) attribute
         // This interface handles internal validation errors and errors sent back by apple [2]
         // It will eventually also return, in the same way, the feedback service errors soon [3]
-        go func(q *apn.Queue) {
+        go func() {
             for {
                 notification := <- q.Error
                 if notification.Error != nil {
                     // Do something with that notification
                 }
             }
-        }(q)
+        }()
 
 
 Certificates
 
 You need a certification and an unprotected key pem file. See http://blog.boxedice.com/2010/06/05/how-to-renew-your-apple-push-notification-push-ssl-certificate/
 
-Reminder, after you've got you .p12 files
+Reminder, after you've got your .p12 files:
 
         openssl pkcs12 -clcerts -nokeys -out dev-cert.pem -in dev-cert.p12
         openssl pkcs12 -nocerts -out dev-key.pem -in dev-key.p12
@@ -82,27 +82,13 @@ Apple and Apple Push Notifications are trademarks owned by Apple inc. and have n
 */
 package apn
 
-import (
-// "os"
-// "log"
-// "time"
-// "os/signal"
-
-// "fmt"
-// "sync"
-// "path"
-// "crypto/tls"
-// "net"
-// "bytes"
-)
-
 
 type ApnEnv int
 
-var (
-	Test       = ApnEnv(0)
-	Sandbox    = ApnEnv(1)
-	Production = ApnEnv(2)
+const (
+	Test = iota // The Test env is not an Apple env, it doesn't connect nor send
+	Sandbox
+	Production
 )
 
 func envString(env ApnEnv) (envString string) {
@@ -113,11 +99,13 @@ func envString(env ApnEnv) (envString string) {
 	} else if env == Production {
 		envString = "production"
 	}
-	return envString
+	return
 }
 
 func envObject(envString string) (env ApnEnv) {
-	if envString == "sandbox" {
+	if envString == "test" {
+		env = Test
+	} else if envString == "sandbox" {
 		env = Sandbox
 	} else if envString == "production" {
 		env = Production
@@ -127,6 +115,3 @@ func envObject(envString string) (env ApnEnv) {
 
 
 var queues []Queue = make([]Queue, 10)
-
-
-
