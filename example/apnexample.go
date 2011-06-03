@@ -23,14 +23,15 @@ func main() {
     
     deviceToken := "Valid Device Token Here"
     
-    notification := apn.NewNotification(deviceToken, payload)
-    log.Println("Notifcation", notification)
+    notification := apn.NewNotification(deviceToken, payload, 0)
+    // log.Println("Notifcation", notification)
+    
     q.Send <- notification
 
     go func(q *apn.Queue) {
         for {
             notification := <- q.Error
-            log.Println("Notifcation", notification, "encountered an error", notification.Error)
+            log.Fatalln(notification.Error)
         }
     }(q)
     

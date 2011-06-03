@@ -33,7 +33,7 @@ const NUMBER_OF_RETRIES = 2
 // You should expect to receive these errors on the notification sent back on the 'queue.Error' channel
 var (
 	PayloadTooLargeError     = os.NewError("Payload size exceeds limit (255 bytes)")
-	BadDeviceToken           = os.NewError("The given device token is not valid device token")
+	BadDeviceToken           = os.NewError("The given device token is not a valid device token")
 	PayloadJSONEncodingError = os.NewError("Notification's payload cannot be encoded to JSON, it must not respect the json pkg input format")
 	RefusedByApple           = os.NewError("After several tries, the notification can't find it's way to Apple. (Can be a connection error!)")
 )

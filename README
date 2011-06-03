@@ -1,5 +1,6 @@
 apn is a Go Apple Push Notification package. Heavily uses queues and goroutines. 
 It has a few tests and seems to work properly but it hasn't had thorough testing and hasn't gone into production yet. 
+Feedback service not supported yet. [3]
 
 NB: This is my first Go code ever.
 
@@ -21,7 +22,7 @@ Usage
             log.Fatalln("Error loading queue", err)
         }
 
-        // The payload is a nested string to interface{} map that respects Apple doc [1]. You should too.
+        // The payload is a nested string to interface{} map that respects Apple doc [1]
         payload := make(map[string]interface{})
         payload["aps"] = map[string]interface{}{
             "alert": "You've got emails.",
@@ -37,7 +38,6 @@ Usage
         // Start a loop in a goroutine somewhere to handle errors (before you start sending)
         // The erroneous notification is returned with an non null Error (os.Error) attribute
         // This interface handles internal validation errors and errors sent back by apple [2]
-        // It will eventually also return, in the same way, the feedback service errors soon [3]
         go func(q *apn.Queue) {
             for {
                 notification := <- q.Error
